@@ -1,0 +1,40 @@
+/* inference.proto — gRPC Service Definition
+ * Compile: python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. inference.proto
+ */
+syntax = "proto3";
+package inference;
+
+service InferenceService {
+    rpc Predict       (PredictRequest)        returns (PredictResponse);
+    rpc PredictStream (stream PredictRequest) returns (stream PredictResponse);
+    rpc HealthCheck   (HealthCheckRequest)    returns (HealthCheckResponse);
+}
+
+message PredictRequest {
+    bytes  image_data = 1;  // Raw JPEG/PNG/BMP/WebP bytes
+    string request_id = 2;  // UUID for distributed tracing
+    int32  top_k      = 3;  // How many top predictions (default 5)
+}
+
+message Prediction {
+    int32  rank       = 1;
+    string label      = 2;
+    float  confidence = 3;  // 0.0 -- 100.0
+}
+
+message PredictResponse {
+    string             request_id        = 1;
+    repeated Prediction predictions      = 2;
+    float              inference_time_ms = 3;
+    string             worker_id         = 4;
+    string             error             = 5;
+}
+
+message HealthCheckRequest {}
+message HealthCheckResponse {
+    bool   healthy         = 1;
+    string worker_id       = 2;
+    string device          = 3;
+    int32  queue_depth     = 4;
+    float  p95_latency_ms  = 5;
+}

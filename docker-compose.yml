@@ -1,0 +1,61 @@
+# docker-compose.yml — Full Production Development Stack
+# Scale workers: docker-compose up --scale worker=5
+version: "3.9"
+services:
+
+  # ── C Gateway ──────────────────────────────────────────────────────
+  gateway:
+    build: { context: ., dockerfile: Dockerfile.gateway }
+    ports: ["9999:9999"]
+    depends_on:
+      worker1: { condition: service_healthy }
+      worker2: { condition: service_healthy }
+    environment:
+      LB_WORKERS: "worker1:10001,worker2:10001,worker3:10001"
+    restart: unless-stopped
+    networks: [inference-net]
+
+  # ── Async Python Workers ───────────────────────────────────────────
+  worker1:
+    build: { context: ., dockerfile: Dockerfile.worker }
+    environment: { WORKER_PORT: "10001", WORKER_ID: "worker1", METRICS_PORT: "9091" }
+    ports: ["9091:9091", "8001:8000"]
+    restart: unless-stopped
+    networks: [inference-net]
+
+  worker2:
+    build: { context: ., dockerfile: Dockerfile.worker }
+    environment: { WORKER_PORT: "10001", WORKER_ID: "worker2", METRICS_PORT: "9092" }
+    ports: ["9092:9092", "8002:8000"]
+    restart: unless-stopped
+    networks: [inference-net]
+
+  worker3:
+    build: { context: ., dockerfile: Dockerfile.worker }
+    environment: { WORKER_PORT: "10001", WORKER_ID: "worker3", METRICS_PORT: "9093" }
+    ports: ["9093:9093", "8003:8000"]
+    restart: unless-stopped
+    networks: [inference-net]
+
+  # ── Prometheus ─────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    volumes: ["./prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
+    ports: ["9090:9090"]
+    restart: unless-stopped
+    networks: [inference-net]
+
+  # ── Grafana ────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.2.0
+    ports: ["3000:3000"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes: ["./grafana/provisioning:/etc/grafana/provisioning:ro"]
+    depends_on: [prometheus]
+    restart: unless-stopped
+    networks: [inference-net]
+
+networks:
+  inference-net:
+    driver: bridge

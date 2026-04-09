@@ -1,0 +1,18 @@
+# Dockerfile.gateway — C API Gateway
+# Two-stage build: compile in builder, copy stripped binary to minimal runtime.
+FROM ubuntu:22.04 AS builder
+RUN apt-get update && apt-get install -y gcc make libc6-dev && \
+    rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+COPY src/gateway.c src/lb.c src/lb.h src/health.c Makefile ./
+RUN make gateway && strip gateway
+
+# ── Runtime image (minimal) ──────────────────────────────────────────
+FROM ubuntu:22.04
+WORKDIR /app
+COPY --from=builder /build/gateway .
+ENV LB_WORKERS="127.0.0.1:10001,127.0.0.1:10002,127.0.0.1:10003"
+EXPOSE 9999
+HEALTHCHECK --interval=10s --timeout=3s \
+    CMD bash -c 'echo "" > /dev/tcp/localhost/9999' || exit 1
+CMD ["./gateway"]

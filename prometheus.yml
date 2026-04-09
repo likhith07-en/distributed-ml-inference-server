@@ -1,0 +1,30 @@
+# prometheus.yml — Prometheus Scrape Configuration
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+  external_labels: { cluster: inference-cluster }
+
+scrape_configs:
+  # ── Python Async Workers ─────────────────────────────────────────
+  - job_name: inference_workers
+    static_configs:
+      - targets: [worker1:9091, worker2:9092, worker3:9093]
+
+  # ── Kubernetes pod discovery (production) ────────────────────────
+  - job_name: k8s_inference_workers
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: "true"
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+        target_label: __address__
+
+# Key Grafana PromQL queries:
+# Request rate:         rate(inference_requests_total[1m])
+# P95 latency:          histogram_quantile(0.95, rate(inference_latency_ms_bucket[5m]))
+# GPU utilization:      gpu_utilization_percent
+# Error rate:           rate(inference_requests_total{status="error"}[1m])
+#                       / rate(inference_requests_total[1m])
+# Avg batch size:       histogram_quantile(0.5, rate(inference_batch_size_bucket[5m]))

@@ -1,0 +1,60 @@
+# k8s/worker-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: inference-workers }
+spec:
+  replicas: 3
+  selector: { matchLabels: { app: inference-worker } }
+  template:
+    metadata:
+      labels: { app: inference-worker }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      containers:
+      - name: worker
+        image: inference-worker:latest
+        ports:
+        - { containerPort: 10001, name: inference }
+        - { containerPort: 9090,  name: metrics }
+        - { containerPort: 8000,  name: rest }
+        env:
+        - { name: WORKER_PORT, value: "10001" }
+        - name: WORKER_ID
+          valueFrom: { fieldRef: { fieldPath: metadata.name } }
+        resources:
+          requests: { cpu: "1000m", memory: "2Gi" }
+          limits:   { cpu: "2000m", memory: "4Gi" }
+        readinessProbe: { tcpSocket: { port: 10001 }, initialDelaySeconds: 20 }
+        livenessProbe:  { tcpSocket: { port: 10001 }, initialDelaySeconds: 30 }
+        lifecycle:
+          preStop:
+            exec: { command: ["/bin/sh", "-c", "sleep 5"] }
+      terminationGracePeriodSeconds: 35   # DRAIN_TIMEOUT_SEC + 5
+---
+apiVersion: v1
+kind: Service
+metadata: { name: inference-workers }
+spec:
+  clusterIP: None   # Headless — C gateway resolves all pod IPs via DNS
+  selector: { app: inference-worker }
+  ports:
+  - { port: 10001, name: inference }
+  - { port: 9090,  name: metrics }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: inference-worker-hpa }
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: inference-workers
+  minReplicas: 2
+  maxReplicas: 12
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target: { type: Utilization, averageUtilization: 70 }

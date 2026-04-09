@@ -1,0 +1,29 @@
+# Dockerfile.worker — Python Async Inference Worker
+# Includes uvloop, FastAPI, uvicorn, security + batch engine.
+# For GPU: replace --index-url with the CUDA wheel URL.
+FROM python:3.11-slim
+WORKDIR /app
+
+# Install CPU-only PyTorch (swap URL for GPU builds)
+RUN pip install --no-cache-dir \
+    torch torchvision --index-url https://download.pytorch.org/whl/cpu \
+    uvloop fastapi uvicorn[standard] pydantic \
+    prometheus-fastapi-instrumentator prometheus-client \
+    Pillow grpcio grpcio-tools numpy scipy aiohttp
+
+COPY async_worker.py batch_engine.py model_loader.py metrics.py \
+     security.py logging_config.py api_server.py shutdown.py ./
+
+ENV WORKER_PORT=10001
+ENV WORKER_ID=worker-default
+ENV METRICS_PORT=9090
+
+EXPOSE ${WORKER_PORT} ${METRICS_PORT} 8000
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s \
+    CMD python -c "import socket; s=socket.socket(); \
+        s.connect(('localhost', int(__import__('os').getenv('WORKER_PORT','10001')))); s.close()"
+
+# Raw TCP mode (default): python async_worker.py
+# REST mode:              uvicorn api_server:app --host 0.0.0.0 --port 8000
+CMD ["python", "async_worker.py"]
